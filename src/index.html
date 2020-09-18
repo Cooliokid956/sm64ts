@@ -17,29 +17,29 @@
             <div class="inner">
                 <h3 class="masthead-brand rainbowText">Super Mario 64 JS</h3>
                 <nav class="nav nav-masthead justify-content-center">
-                    <a class="nav-link" href="#What">About</a>
-                    <a class="nav-link" href="https://github.com/sm64js/sm64js">Source Code</a>
-                    <a class="nav-link" href="https://discord.gg/7UaDnJt">Discord Server</a>
-                    <a class="nav-link" href="#Contact">Contact</a>
+                    <a class="nav-link" href="#What">Acerca de</a>
+                    <a class="nav-link" href="https://github.com/sm64js/sm64js">Codigo</a>
+                    <a class="nav-link" href="https://discord.gg/7UaDnJt">Servidor de Discord</a>
+                    <a class="nav-link" href="#Contact">Contactar</a>
                 </nav>
             </div>
         </header>
 
         <main role="main" class="inner cover">
-            <h1 class="cover-heading rainbowText">Super Mario 64 - Javascript Port</h1>
+            <h1 class="cover-heading rainbowText">Super Mario 64 - Port de Javascript</h1>
 
             <form id="romSelect" class="form-group" enctype="multipart/form-data" method="post">
-                <h4 style="color:#fa3e3e">Select US SM64 ROM File from your computer</h4>
+                <h4 style="color:#fa3e3e">Seleccione ROM de SM64 E.E.U.U. de tu computadora</h4>
                 <input id="romFile" class="btn btn-secondary btn-sm" type="file">
                 <input class="btn btn-primary btn-sm" type="submit">
             </form>
-            <h6 id="romMessage">This project uses the textures and other game assets from the original game. Due to copyright issues, I cannot host those assets on this site. Please select a sm64 ROM to extract those assets before you can play.</h6>
+            <h6 id="romMessage">Este proyecto usa las texturas y otros archivos del juego original. Debido a problemas de derechos, no puedo mantener esos archivos en esta pagina. Por favor selecciona un ROM de SM64 para extraer esos archivos antes de poder jugar.</h6>
             <div class="row" style="justify-content:center">
-                <button id="startbutton" type="button" class="btn btn-success" disabled>Start Game</button>
-                <a href="https://github.com/sm64js/sm64js/issues" style="margin-left:30px" type="button" class="btn btn-warning">Submit Bug</a>
+                <button id="startbutton" type="button" class="btn btn-success" disabled>Comenzar Juego</button>
+                <a href="https://github.com/sm64js/sm64js/issues" style="margin-left:30px" type="button" class="btn btn-warning">Reportar Error</a>
             </div>
             <div class="row" style="justify-content:center;">
-                <h6> <b>Gamepad is supported and recommended!</b> </h6>
+                <h6> <b>Mandos son soportados y recomendados!</b> </h6>
             </div>
             <div class="row" style="justify-content:center">
                 <button type="button"
@@ -48,7 +48,7 @@
                         data-container="body"
                         data-toggle="keyboardControlsToggle"
                         data-placement="bottom">
-                    Customize Keyboard Controls
+                    Personalizar Botones de Teclado
                 </button>
                 <button type="button"
                         style="margin-left:50px"
@@ -57,7 +57,7 @@
                         data-container="body"
                         data-toggle="gamepadControlsToggle"
                         data-placement="bottom">
-                    Customize Gamepad Controls
+                    Personalizar Controles de Mando
                 </button>
             </div>
 
@@ -66,12 +66,12 @@
             <br />
             <br />
 
-            <h6 hidden id="numTriangles"> Total triangles rendered this frame: </h6>
+            <h6 hidden id="numTriangles"> Total de triangulos dibujados actualmente: </h6>
             <div class="row">
                 <div class="col-5" style="text-align:left">
-                    <h6>Total Frame Time (Avg): </h6>
-                    <h6 hidden>Game Logic (Avg): </h6>
-                    <h6 hidden>Rendering/WebGL (Avg):</h6>
+                    <h6>Tiempo para Dibujar (Med): </h6>
+                    <h6 hidden>Logica de Juego (Med): </h6>
+                    <h6 hidden>Dibujar/WebGL (Med):</h6>
                 </div>
                 <div class="col-1">
                     <h6 id="timing-total"></h6>
@@ -83,7 +83,7 @@
                 </div>
             </div>
             <div hidden class="row" style="justify-content:center;">
-                <h6 style="padding-right:10px"> Adjust Game Speed: </h6>
+                <h6 style="padding-right:10px"> Ajustar Velocidad de Juego: </h6>
                 <input id="slider" type="range" style="width:300px" min="1" max="60" value="30">
                 <h6 id="fps" style="padding-left:10px"> 30 fps </h6>
             </div>
@@ -91,16 +91,16 @@
             <br />
             <br />
 
-            <a name="What"></a>
-            <h4>What is this?</h4>
+            <a name="Acerca de"></a>
+            <h4>Que es esto??</h4>
             <p>
-                This is an ongoing work-in-progress port of the <a href="https://github.com/n64decomp/sm64">decompilation</a> of original Nintendo game, Super Mario 64, to native Javascript (No Emulation) (No Web Assembly).
-                This project required creating a Javascript WebGL port of <a href="https://github.com/Emill/n64-fast3d-engine">N64 Fast 3D Renderer</a> originally implemented with OpenGL in C. This project also includes the development of online mass multiplayer versions of sm64js and other custom multiplayer game modes.
+                Esto es un port (que sigue en progreso) de la <a href="https://github.com/n64decomp/sm64">decompilacion</a> del original de Nintendo, Super Mario 64, a Javascript nativamenteto (Sin usar emulacion) (Sin usar Web Assembly).
+                Este proyecto requirio crear un port a WebGL Javascript de el <a href="https://github.com/Emill/n64-fast3d-engine">"N64 Fast 3D Renderer"</a> originalmente implementado con OpenGL en C. Este proyecto tambien incluye el desarollo de versiones multijugador en masa en linea de sm64js y otros modos de multijugador.
             </p>
             <br />
 
-            <a name="Purpose"></a>
-            <h4>What is the purpose of this port?</h4>
+            <a name="Proposito"></a>
+            <h4>Cual es el proposito de este port?</h4>
             <ul style="display:inline-block;vertical-align:middle;text-align:left">
                 <li>
                     <b>Extensibility:</b> More access to more developers to add custom content
