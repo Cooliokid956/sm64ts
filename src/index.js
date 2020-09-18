@@ -115,14 +115,14 @@ const setStatsUpdate = setInterval(() => {
     const renderFrameTimeAvg = renderFrameTimeBuffer.getAvg().toFixed(2)
     const gameLogicFrametimeAvg = gameLogicFrameTimeBuffer.getAvg().toFixed(2)
     const maxFps = (1000 / totalFrameTimeAvg).toFixed(2)
-    document.getElementById("maxFps").innerHTML = `Effective Max Fps: ${maxFps}`
+    document.getElementById("maxFps").innerHTML = `Fps Max. Effectivo: ${maxFps}`
     document.getElementById("timing-total").innerHTML = `${totalFrameTimeAvg}ms`
     document.getElementById("timing-game").innerHTML = `${gameLogicFrametimeAvg}ms`
     document.getElementById("timing-render").innerHTML = `${renderFrameTimeAvg}ms`
 }, 500)
 
 const webpage_update = () => {
-    document.getElementById("numTriangles").innerHTML = `Total Triangles this frame: ${window.totalTriangles}`
+    document.getElementById("numTriangles").innerHTML = `Total de triangulos dibujados actualmente: ${window.totalTriangles}`
 }
 
 document.getElementById("slider").addEventListener('change', (event) => {
@@ -136,17 +136,17 @@ document.getElementById("slider").addEventListener('change', (event) => {
 let gameStarted = false
 
 document.getElementById("startbutton").addEventListener('click', () => {
-    if (gameStarted) window.location.search += '&autostart=1' /// Refresh page (Reset Game)
+    if (gameStarted) window.location.search += '&autostart=1' /// Refrescar pagina (Resetear Juego)
     else startGame()
 })
 
 const startGame = () => {
-    console.log("Starting Game!")
+    console.log("Comenzando Juego!")
     gameStarted = true
 
     document.getElementById("startbutton").classList.remove('btn-success')
     document.getElementById("startbutton").classList.add('btn-light')
-    document.getElementById("startbutton").innerHTML = "🔄 Reset Game"
+    document.getElementById("startbutton").innerHTML = "🔄 Resetear Juego"
 
     main_func()
 }
