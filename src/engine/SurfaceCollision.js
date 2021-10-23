@@ -1,12 +1,44 @@
-import { LEVEL_BOUNDARY_MAX, CELL_SIZE, SURFACE_FLAG_NO_CAM_COLLISION, SURFACE_CAMERA_BOUNDARY, SURFACE_FLAG_X_PROJECTION } from "../include/surface_terrains"
-import { SurfaceLoadInstance as SurfaceLoad } from "../game/SurfaceLoad"
-import { ObjectListProcessorInstance as ObjectListProcessor } from "../game/ObjectListProcessor"
-import { SpawnObjectInstance as Spawn } from "../game/SpawnObject"
+import * as _Linker from "../game/Linker"
+import * as _SurfaceLoad from "../game/SurfaceLoad"
 
+import {
+    LEVEL_BOUNDARY_MAX, CELL_SIZE, SURFACE_FLAG_NO_CAM_COLLISION, SURFACE_CAMERA_BOUNDARY, SURFACE_FLAG_X_PROJECTION,
+    FLOOR_LOWER_LIMIT
+} from "../include/surface_terrains"
 
 class SurfaceCollision {
-    constructor() {
-        Spawn.SurfaceCollision = this
+    find_water_level(x, z) {
+        let waterLevel = FLOOR_LOWER_LIMIT
+
+        const p = gLinker.ObjectListProcessor.gEnvironmentRegions /// array
+
+        if (p && p[0]) {
+            const numRegions = p[0]
+            let dataIndex = 1
+
+            for (let i = 0; i < numRegions; i++) {
+                let val = p[dataIndex++]
+                let loX = p[dataIndex++]
+                let loZ = p[dataIndex++]
+                let hiX = p[dataIndex++]
+                let hiZ = p[dataIndex++]
+    
+                // If the location is within a water box and it is a water box.
+                // Water is less than 50 val only, while above is gas and such.
+                if (loX < x && x < hiX && loZ < z && z < hiZ && val < 50) {
+                    // Set the water height. Since this breaks, only return the first height.
+                    waterLevel = p[dataIndex]
+                    break
+                }
+                dataIndex++
+            }
+        }
+
+        return waterLevel
+    }
+
+    find_floor_height(x, y, z) {
+        return this.find_floor(x, y, z, {})
     }
 
     find_floor_height_and_data(xPos, yPos, zPos, floorGeo) {
@@ -21,6 +53,26 @@ class SurfaceCollision {
         }
 
         return floorHeight
+    }
+
+    find_wall_collision(xPtr, yPtr, zPtr, offsetY, radius) {
+        const collisionData = {
+            radius,
+            offsetY,
+            x: xPtr.value,
+            y: yPtr.value,
+            z: zPtr.value,
+            walls: []
+        }
+
+        const numCollisions = this.find_wall_collisions(collisionData)
+
+        xPtr.value = collisionData.x
+        yPtr.value = collisionData.y
+        zPtr.value = collisionData.z
+
+        return numCollisions
+
     }
 
     find_wall_collisions(colData) {
@@ -39,12 +91,15 @@ class SurfaceCollision {
             return numCollisions
         }
 
-        // World (level) consists of a 16x16 grid. Find where the collision is on
+        // World (level) consists of a 16x16 (upgraded to 32x32) grid. Find where the collision is on
         // the grid (round toward -inf)
-        const cellX = parseInt((x + LEVEL_BOUNDARY_MAX) / CELL_SIZE) & 0xF
-        const cellZ = parseInt((z + LEVEL_BOUNDARY_MAX) / CELL_SIZE) & 0xF
+        const cellX = parseInt((x + LEVEL_BOUNDARY_MAX) / CELL_SIZE) & 0x1F
+        const cellZ = parseInt((z + LEVEL_BOUNDARY_MAX) / CELL_SIZE) & 0x1F
 
-        const node = SurfaceLoad.gStaticSurfacePartition[cellZ][cellX][SurfaceLoad.SPATIAL_PARTITION_WALLS].next
+        let node = gLinker.SurfaceLoad.gDynamicSurfacePartition[cellZ][cellX][gLinker.SurfaceLoad.SPATIAL_PARTITION_WALLS].next
+        numCollisions += this.find_wall_collisions_from_list(node, colData)
+
+        node = gLinker.SurfaceLoad.gStaticSurfacePartition[cellZ][cellX][gLinker.SurfaceLoad.SPATIAL_PARTITION_WALLS].next
         numCollisions += this.find_wall_collisions_from_list(node, colData)
 
         return numCollisions
@@ -70,12 +125,21 @@ class SurfaceCollision {
         }
 
         // Each level is split into cells to limit load, find the appropriate cell
-        const cellX = parseInt((x + LEVEL_BOUNDARY_MAX) / CELL_SIZE) & 0xF
-        const cellZ = parseInt((z + LEVEL_BOUNDARY_MAX) / CELL_SIZE) & 0xF
+        const cellX = parseInt((x + LEVEL_BOUNDARY_MAX) / CELL_SIZE) & 0x1F
+        const cellZ = parseInt((z + LEVEL_BOUNDARY_MAX) / CELL_SIZE) & 0x1F
 
-        const surfaceList = SurfaceLoad.gStaticSurfacePartition[cellZ][cellX][SurfaceLoad.SPATIAL_PARTITION_CEILS].next
+        let surfaceList = gLinker.SurfaceLoad.gDynamicSurfacePartition[cellZ][cellX][gLinker.SurfaceLoad.SPATIAL_PARTITION_CEILS].next
+        const dynamicHeightWrapper = { height }
+        const dynamicCeil = this.find_ceil_from_list(surfaceList, x, y, z, dynamicHeightWrapper)
+
+        surfaceList = gLinker.SurfaceLoad.gStaticSurfacePartition[cellZ][cellX][gLinker.SurfaceLoad.SPATIAL_PARTITION_CEILS].next
         const heightWrapper = { height }
         ceilWrapper.ceil = this.find_ceil_from_list(surfaceList, x, y, z, heightWrapper)
+
+        if (dynamicHeightWrapper.height < heightWrapper.height) {
+            ceilWrapper.ceil = dynamicCeil
+            heightWrapper.height = dynamicHeightWrapper.height
+        }
 
         return heightWrapper.height
     }
@@ -97,12 +161,21 @@ class SurfaceCollision {
         }
 
         // Each level is split into cells to limit load, find the appropriate cell.
-        const cellX = parseInt((x + LEVEL_BOUNDARY_MAX) / CELL_SIZE) & 0xF
-        const cellZ = parseInt((z + LEVEL_BOUNDARY_MAX) / CELL_SIZE) & 0xF
+        const cellX = parseInt((x + LEVEL_BOUNDARY_MAX) / CELL_SIZE) & 0x1F
+        const cellZ = parseInt((z + LEVEL_BOUNDARY_MAX) / CELL_SIZE) & 0x1F
 
-        const surfaceList = SurfaceLoad.gStaticSurfacePartition[cellZ][cellX][SurfaceLoad.SPATIAL_PARTITION_FLOORS].next
+        let surfaceList = gLinker.SurfaceLoad.gDynamicSurfacePartition[cellZ][cellX][gLinker.SurfaceLoad.SPATIAL_PARTITION_FLOORS].next
+        const dynamicHeightWrapper = { height }
+        const dynamicFloor = this.find_floor_from_list(surfaceList, x, y, z, dynamicHeightWrapper)
+
+        surfaceList = gLinker.SurfaceLoad.gStaticSurfacePartition[cellZ][cellX][gLinker.SurfaceLoad.SPATIAL_PARTITION_FLOORS].next
         const heightWrapper = { height }
         floorWrapper.floor = this.find_floor_from_list(surfaceList, x, y, z, heightWrapper)
+
+        if (dynamicHeightWrapper.height > heightWrapper.height) {
+            floorWrapper.floor = dynamicFloor
+            heightWrapper.height = dynamicHeightWrapper.height
+        }
 
         return heightWrapper.height
 
@@ -113,7 +186,6 @@ class SurfaceCollision {
         let radius = data.radius
         let numCols = 0
         const x = data.x, y = data.y + data.offsetY, z = data.z
-        data.walls = []
 
         if (radius > 200.0) radius = 200.0
 
@@ -162,7 +234,7 @@ class SurfaceCollision {
 
 
             // Determine if we are checking for the camera or not.
-            if (ObjectListProcessor.gCheckingSurfaceCollisionsForCamera != 0) {
+            if (gLinker.ObjectListProcessor.gCheckingSurfaceCollisionsForCamera != 0) {
                 if (surf.flags & SURFACE_FLAG_NO_CAM_COLLISION) continue 
             }
             // If we are not checking for the camera, ignore camera only floors.
@@ -214,7 +286,7 @@ class SurfaceCollision {
             if ((z3 - z) * (x1 - x3) - (x3 - x) * (z1 - z3) > 0) { continue }
 
             // Determine if we are checking for the camera or not.
-            if (ObjectListProcessor.gCheckingSurfaceCollisionsForCamera != 0) {
+            if (gLinker.ObjectListProcessor.gCheckingSurfaceCollisionsForCamera != 0) {
                 if (surf.flags & SURFACE_FLAG_NO_CAM_COLLISION) { continue }
             }
             // If we are not checking for the camera, ignore camera only floors.
@@ -271,7 +343,7 @@ class SurfaceCollision {
             if ((z3 - z) * (x1 - x3) - (x3 - x) * (z1 - z3) < 0) { continue }
 
             // Determine if we are checking for the camera or not.
-            if (ObjectListProcessor.gCheckingSurfaceCollisionsForCamera != 0) {
+            if (gLinker.ObjectListProcessor.gCheckingSurfaceCollisionsForCamera != 0) {
                 if (surf.flags & SURFACE_FLAG_NO_CAM_COLLISION) { continue }
             }
             // If we are not checking for the camera, ignore camera only floors.
@@ -305,3 +377,4 @@ class SurfaceCollision {
 }
 
 export const SurfaceCollisionInstance = new SurfaceCollision()
+gLinker.SurfaceCollision = SurfaceCollisionInstance

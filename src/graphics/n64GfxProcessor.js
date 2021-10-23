@@ -31,8 +31,6 @@ const MAX_BUFFERED = 256
 const MAX_LIGHTS = 2
 const MAX_VERTICES = 64
 
-let opCount = 0
-
 export class n64GfxProcessor {
     constructor() {
 
@@ -75,7 +73,7 @@ export class n64GfxProcessor {
             loaded_texture: [{ textureData: null, size_bytes: 0 }, { textureData: null, size_bytes: 0 }],
             texture_tile: { fmt: 0, siz: 0, cms: 0, cmt: 0, uls: 0, ult: 0, lrs: 0, lrt: 0, line_size_bytes: 0 },
             textures_changed: [false, false],
-            other_mode_l: 0,  /// TODO other_mode_l
+            other_mode_l: 0, 
             other_mode_h: {
                 12: 0, //Gbi.G_MDSFT_TEXTFILT
                 20: 0 //GBI.G_MDSFT_CYCLETYPE
@@ -118,11 +116,31 @@ export class n64GfxProcessor {
     }
 
     start_frame(){
-        /// handle input
-        /// handle dimensions
-    }
+        const dstCanvas = document.getElementById("fullCanvas")
 
-    end_frame() { }
+        if (window.fullWindowMode || document.fullscreenElement) {
+            const dstCtx = dstCanvas.getContext("2d")
+            dstCanvas.hidden = false
+            WebGL.canvas.hidden = true
+            if (window.fullWindowMode) {
+                const windowAspect = window.innerWidth / window.innerHeight
+                if (windowAspect > 1.33) { /// wider than tall
+                    dstCanvas.height = window.innerHeight
+                    dstCanvas.width = window.innerHeight * 1.33
+                } else {  /// taller than wide
+                    dstCanvas.width = window.innerWidth
+                    dstCanvas.height = window.innerWidth / 1.33
+                }
+                window.scrollTo(0, 0)
+                document.body.style.overflowY = "hidden"
+            }
+            dstCtx.drawImage(WebGL.canvas, 0, 0, dstCanvas.width, dstCanvas.height)
+        } else {  /// normal mode
+            WebGL.canvas.hidden = false
+            dstCanvas.hidden = true
+            document.body.style.overflowY = "scroll"
+        }
+    }
 
     sp_reset() {
         this.rsp.modelview_matrix_stack_size = 1
@@ -202,7 +220,7 @@ export class n64GfxProcessor {
     scale_4_8(val) { return Math.floor(val * 0x11) }
 
     dp_set_fill_color(color) {
-        this.rdp.fill_color.r = this.scale_5_8(color >> 11)
+        this.rdp.fill_color.r = this.scale_5_8((color >> 11) & 0x1f)
         this.rdp.fill_color.g = this.scale_5_8((color >> 6) & 0x1f)
         this.rdp.fill_color.b = this.scale_5_8((color >> 1) & 0x1f)
         this.rdp.fill_color.a = (color & 1) * 255
@@ -343,7 +361,7 @@ export class n64GfxProcessor {
         const rgba32_buf = []
 
         for (let i = 0; i < this.rdp.loaded_texture[tile].size_bytes / 2; i++) {
-            const intensity = this.rdp.loaded_texture[tile].textureData[2 * i] >> 4
+            const intensity = this.rdp.loaded_texture[tile].textureData[2 * i]
             const alpha = this.rdp.loaded_texture[tile].textureData[2* i + 1]
 
             rgba32_buf.push(intensity)
@@ -359,13 +377,12 @@ export class n64GfxProcessor {
     }
 
     import_texture_rgba16(tile) {
-
         const rgba32_buf = []
         for (let i = 0; i < this.rdp.loaded_texture[tile].size_bytes / 2; i++) {
             const col16 = (this.rdp.loaded_texture[tile].textureData[2 * i] << 8) | this.rdp.loaded_texture[tile].textureData[2 * i + 1]
 
             const a = col16 & 1
-            const r = col16 >> 11
+            const r = (col16 >> 11) & 0x1f
             const g = (col16 >> 6) & 0x1f
             const b = (col16 >> 1) & 0x1f
 
@@ -524,7 +541,7 @@ export class n64GfxProcessor {
         let cc_id = this.rdp.combine_mode
 
         let use_alpha = (this.rdp.other_mode_l & (Gbi.G_BL_A_MEM << 18)) == 0
-        const use_fog = (this.rdp.other_mode_l >> 30) == Gbi.G_BL_CLR_FOG
+        const use_fog = (this.rdp.other_mode_l >>> 30) == Gbi.G_BL_CLR_FOG
         const texture_edge = (this.rdp.other_mode_l & Gbi.CVG_X_ALPHA) == Gbi.CVG_X_ALPHA
 
         if (texture_edge) use_alpha = true
@@ -601,7 +618,10 @@ export class n64GfxProcessor {
             }
 
             if (use_fog) {
-                throw "more fog implementation needed here"
+                this.buf_vbo.push(this.rdp.fog_color.r / 255.0)
+                this.buf_vbo.push(this.rdp.fog_color.g / 255.0)
+                this.buf_vbo.push(this.rdp.fog_color.b / 255.0)
+                this.buf_vbo.push(v_arr[i].color.a / 255.0)
             }
 
             for (let j = 0; j < num_inputs; j++) {
@@ -736,6 +756,61 @@ export class n64GfxProcessor {
 
     }
 
+    dp_texture_rectangle(ulx, uly, lrx, lry, tile, uls, ult, dsdx, dtdy, flip) {
+        const saved_combine_mode = this.rdp.combine_mode
+
+        if (this.rdp.other_mode_h[Gbi.G_MDSFT_CYCLETYPE] == Gbi.G_CYC_COPY) {
+            // Per RDP Command Summary Set Tile's shift s and this dsdx should be set to 4 texels
+            // Divide by 4 to get 1 instead
+            dsdx >>= 2
+
+            // Color combiner is turned off in copy mode
+            this.dp_set_combine_mode(this.color_comb(0, 0, 0, Gbi.G_CCMUX_TEXEL0), this.color_comb(0, 0, 0, Gbi.G_ACMUX_TEXEL0))
+
+            // Per documentation one extra pixel is added in this modes to each edge
+            lrx += 1 << 2
+            lry += 1 << 2
+        }
+
+        // uls and ult are S10.5
+        // dsdx and dtdy are S5.10
+        // lrx, lry, ulx, uly are U10.2
+        // lrs, lrt are S10.5
+        if (flip) {
+            dsdx = -dsdx
+            dtdy = -dtdy
+        }
+
+        const width = !flip ? lrx - ulx : lry - uly
+        const height = !flip ? lry - uly : lrx - ulx
+        const lrs = ((uls << 7) + dsdx * width) >> 7
+        const lrt = ((ult << 7) + dtdy * height) >> 7
+
+        const ul = this.rsp.loaded_vertices[MAX_VERTICES + 0]
+        const ll = this.rsp.loaded_vertices[MAX_VERTICES + 1]
+        const lr = this.rsp.loaded_vertices[MAX_VERTICES + 2]
+        const ur = this.rsp.loaded_vertices[MAX_VERTICES + 3]
+
+        ul.u = uls
+        ul.v = ult
+        lr.u = lrs
+        lr.v = lrt
+        if (!flip) {
+            ll.u = uls
+            ll.v = lrt
+            ur.u = lrs
+            ur.v = ult
+        } else {
+            ll.u = lrs
+            ll.v = ult
+            ur.u = uls
+            ur.v = lrt
+        }
+
+        this.draw_rectangle(ulx, uly, lrx, lry)
+        this.rdp.combine_mode = saved_combine_mode
+    }
+
     sp_texture(s, t) {
         this.rsp.texture_scaling_factor = { s, t }
     }
@@ -773,12 +848,25 @@ export class n64GfxProcessor {
         Object.assign(this.rdp.texture_to_load, { size, textureData: imageData })
     }
 
+    dp_set_fog_color(r, g, b, a) {
+        this.rdp.fog_color = { r, g, b, a }
+    }
+
     sp_moveword(type, data) {
 
         if (type == Gbi.G_MW_NUMLIGHT) {
             this.rsp.current_num_lights = data
             this.rsp.lights_changed = true
-        } else throw " moveword fog not implemented "
+            return
+        }
+
+        if (type == Gbi.G_MW_FOG) {
+            this.rsp.fog_mul = data.mul
+            this.rsp.fog_offset = data.offset
+            return
+        } 
+
+        throw " moveword type not implemented "
 
     }
 
@@ -831,15 +919,18 @@ export class n64GfxProcessor {
 
     sp_vertex(dest_index, vertices) {
 
-        for (let i = 0; i < vertices.length; i++, dest_index++) {
+        for (let i = dest_index; i < vertices.length; i++) {
 
-            const v = vertices[i]
+            let v = vertices[i]
+            if (Array.isArray(v)) {
+                v = {pos: v[0], flag: v[1], tc: v[2], color: v[3]}
+            }
             const normal = [
                 v.color[0] > 127 ? v.color[0] - 256 : v.color[0],
                 v.color[1] > 127 ? v.color[1] - 256 : v.color[1],
                 v.color[2] > 127 ? v.color[2] - 256 : v.color[2]
             ]
-            const d = this.rsp.loaded_vertices[dest_index]
+            const d = this.rsp.loaded_vertices[i]
 
             const x = v.pos[0] * this.rsp.MP_matrix[0][0] + v.pos[1] * this.rsp.MP_matrix[1][0] + v.pos[2] * this.rsp.MP_matrix[2][0] + this.rsp.MP_matrix[3][0]
             const y = v.pos[0] * this.rsp.MP_matrix[0][1] + v.pos[1] * this.rsp.MP_matrix[1][1] + v.pos[2] * this.rsp.MP_matrix[2][1] + this.rsp.MP_matrix[3][1]
@@ -917,7 +1008,15 @@ export class n64GfxProcessor {
             Object.assign(d, { x, y, z, w })
 
             if (this.rsp.geometry_mode & Gbi.G_FOG) {
-                throw "more implementation needed here"
+                if (w == 0) w == 0.001 // To avoid division by zero
+
+                let winv = 1.0 / w
+                if (winv < 0.0) winv = 32767.0
+
+                let fog_z = z * winv * this.rsp.fog_mul + this.rsp.fog_offset
+                if (fog_z < 0) fog_z = 0
+                if (fog_z > 255) fog_z = 255
+                d.color.a = fog_z
             } else {
                 d.color.a = v.color[3]
             }
@@ -928,11 +1027,8 @@ export class n64GfxProcessor {
     run_dl(commands) {
 
         for (const command of commands) {
-
             const opcode = command.words.w0
             const args = command.words.w1
-
-            opCount++
 
             switch (opcode) {
                 case Gbi.G_ENDDL: /// not necessary for JS
@@ -957,6 +1053,9 @@ export class n64GfxProcessor {
                     break
                 case Gbi.G_CLEARGEOMETRYMODE:
                     this.sp_geometry_mode(args.mode, 0)
+                    break
+                case Gbi.G_SETFOGCOLOR:
+                    this.dp_set_fog_color(args.r, args.g, args.g, args.a)
                     break
                 case Gbi.G_SETOTHERMODE_H:
                     this.sp_set_other_mode_h(args.category, args.newmode)
@@ -995,6 +1094,10 @@ export class n64GfxProcessor {
                     break
                 case Gbi.G_FILLRECT:
                     this.dp_fill_rectangle(args.ulx, args.uly, args.lrx, args.lry)
+                    break
+                case Gbi.G_TEXRECT:
+                case Gbi.G_TEXRECTFLIP:
+                    this.dp_texture_rectangle(args.ulx, args.uly, args.lrx, args.lry, args.tile, args.uls, args.ult, args.dsdx, args.dtdy, opcode == Gbi.G_TEXRECTFLIP)
                     break
                 case Gbi.G_DL:
                     if (args.branch == 0) {

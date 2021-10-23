@@ -1,9 +1,30 @@
 import * as Mario from "./Mario"
-import { oMarioPolePos, oPosX, oPosY, oPosZ, oMoveAnglePitch, oMoveAngleRoll, oMarioPoleYawVel, oInteractStatus } from "../include/object_constants"
+import * as Camera from "./Camera"
+import { oMarioPolePos, oPosX, oPosY, oPosZ,
+         oMoveAnglePitch, oMoveAngleRoll, oMoveAngleYaw,
+         oMarioPoleYawVel,
+         oMarioCannonObjectYaw, oMarioCannonInputYaw,
+         oAction,
+         oInteractStatus } from "../include/object_constants"
 import { SurfaceCollisionInstance as SurfaceCollision } from "../engine/SurfaceCollision"
-import { approach_number } from "../engine/math_util"
+import { approach_number,
+         vec3f_set,
+         vec3f_copy,
+         vec3s_set } from "../engine/math_util"
+import { s16,
+         coss,
+         sins                          } from "../utils"
 import { stop_and_set_height_to_floor } from "./MarioStep"
 import { SURFACE_HANGABLE } from "../include/surface_terrains"
+import { SOUND_ACTION_TERRAIN_LANDING,
+         SOUND_ACTION_FLYING_FAST,
+         SOUND_OBJ_POUNDING_CANNON,
+         SOUND_MOVING_AIM_CANNON } from "../include/sounds"
+import { play_sound } from "../audio/external"
+import { GRAPH_RENDER_ACTIVE           } from "../engine/graph_node"
+import { INT_STATUS_INTERACTED         } from "./Interaction"
+
+
 
 const POLE_NONE = 0
 const POLE_TOUCHED_FLOOR = 1
@@ -20,7 +41,7 @@ const update_hang_stationary = (m) => {
 
     m.pos[1] = m.ceilHeight - 160.0
     m.vel = [0, 0, 0]
-    m.marioObj.header.gfx.pos = [...m.pos]
+    m.marioObj.gfx.pos = [...m.pos]
 }
 
 const update_hang_moving = (m) => {
@@ -50,8 +71,8 @@ const update_hang_moving = (m) => {
     
     const stepResult = perform_hanging_step(m, nextPos)
 
-    m.marioObj.header.gfx.pos = [...m.pos]
-    m.marioObj.header.gfx.angle = [0, m.faceAngle[1], 0]
+    m.marioObj.gfx.pos = [...m.pos]
+    m.marioObj.gfx.angle = [0, m.faceAngle[1], 0]
 
     return stepResult
 }
@@ -110,7 +131,7 @@ const set_pole_position = (m, offsetY) => {
 
 
     const colData = {
-        x: m.pos[0], y: m.pos[1], z: m.pos[2], offsetY: 60.0, radius: 50.0
+        x: m.pos[0], y: m.pos[1], z: m.pos[2], offsetY: 60.0, radius: 50.0, walls: []
     }
     let collided = SurfaceCollision.find_wall_collisions(colData)
     m.pos = [colData.x, colData.y, colData.z]
@@ -134,8 +155,8 @@ const set_pole_position = (m, offsetY) => {
         throw "collision on pole"
     }
 
-    m.marioObj.header.gfx.pos = [...m.pos]
-    m.marioObj.header.gfx.angle = [
+    m.marioObj.gfx.pos = [...m.pos]
+    m.marioObj.gfx.angle = [
         m.usedObj.rawData[oMoveAnglePitch],
         m.faceAngle[1],
         m.usedObj.rawData[oMoveAngleRoll]
@@ -182,6 +203,12 @@ const act_grab_pole_fast = (m) => {
 
 const act_holding_pole = (m) => {
     const marioObj = m.marioObj
+
+    if (m.input & Mario.INPUT_Z_PRESSED) {
+        //add_tree_leaf_particles(m) TODO
+        m.forwardVel = -2
+        return Mario.set_mario_action(m, Mario.ACT_SOFT_BONK, 0)
+    }
 
     if (m.input & Mario.INPUT_A_PRESSED) {
         //add_tree_leaf_particles(m) TODO
@@ -328,8 +355,8 @@ const act_hang_moving = (m) => {
         Mario.set_mario_animation(m, Mario.MARIO_ANIM_MOVE_ON_WIRE_NET_LEFT)
     }
 
-    // if (m.marioObj.header.gfx.unk38.animFrame == 12) {
-    //     play_sound(SOUND_ACTION_HANGING_STEP, m.marioObj.header.gfx.cameraToObject)
+    // if (m.marioObj.gfx.unk38.animFrame == 12) {
+    //     play_sound(SOUND_ACTION_HANGING_STEP, m.marioObj.gfx.cameraToObject)
     //     queue_rumble_data(5, 30)
     // }
 
@@ -423,7 +450,7 @@ const climb_up_ledge = (m) => {
     Mario.set_mario_animation(m, Mario.MARIO_ANIM_IDLE_HEAD_LEFT)
     m.pos[0] += 14.0 * Math.sin(m.faceAngle[1] / 0x8000 * Math.PI)
     m.pos[2] += 14.0 * Math.cos(m.faceAngle[1] / 0x8000 * Math.PI)
-    m.marioObj.header.gfx.pos = [...m.pos]
+    m.marioObj.gfx.pos = [...m.pos]
 }
 
 const update_ledge_climb = (m, animation, endAction) => {
@@ -483,7 +510,7 @@ const act_ledge_climb_slow = (m) => {
     update_ledge_climb(m, Mario.MARIO_ANIM_SLOW_LEDGE_GRAB, Mario.ACT_IDLE)
 
     update_ledge_climb_camera(m)
-    if (m.marioObj.header.gfx.unk38.animFrame == 17) {
+    if (m.marioObj.gfx.unk38.animFrame == 17) {
         m.action = Mario.ACT_LEDGE_CLIMB_SLOW_2
     }
 
@@ -499,9 +526,9 @@ const act_ledge_climb_fast = (m) => {
 
     update_ledge_climb(m, Mario.MARIO_ANIM_FAST_LEDGE_GRAB, Mario.ACT_IDLE)
 
-    // if (m->marioObj->header.gfx.unk38.animFrame == 8) {
-    //     play_mario_landing_sound(m, SOUND_ACTION_TERRAIN_LANDING)
-    // }
+    if (m.marioObj.gfx.unk38.animFrame == 8) {
+        Mario.play_mario_landing_sound(m, SOUND_ACTION_TERRAIN_LANDING)
+    }
     update_ledge_climb_camera(m)
 
     return 0
@@ -518,7 +545,7 @@ const act_top_of_pole_transition = (m) => {
         }
     } else {
         Mario.set_mario_animation(m, Mario.MARIO_ANIM_RETURN_FROM_HANDSTAND)
-        if (m.marioObj.header.gfx.unk38.animFrame == 0) {
+        if (m.marioObj.gfx.unk38.animFrame == 0) {
             return Mario.set_mario_action(m, Mario.ACT_HOLDING_POLE, 0)
         }
     }
@@ -528,7 +555,6 @@ const act_top_of_pole_transition = (m) => {
 }
 
 const act_top_of_pole = (m) => {
-
     if (m.input & Mario.INPUT_A_PRESSED) {
         return Mario.set_mario_action(m, Mario.ACT_TOP_OF_POLE_JUMP, 0)
     }
@@ -544,23 +570,113 @@ const act_top_of_pole = (m) => {
     return 0
 }
 
+const act_in_cannon = (m) => {
+    const marioObj = m.marioObj
+    const startFacePitch = m.faceAngle[0]
+    const startFaceYaw = m.faceAngle[1]
+
+    switch (m.actionState) {
+        case 0:
+            m.marioObj.gfx.flags &= ~GRAPH_RENDER_ACTIVE
+            m.usedObj.rawData[oInteractStatus] = INT_STATUS_INTERACTED
+
+            m.statusForCamera.cameraEvent = Camera.CAM_EVENT_CANNON
+            m.statusForCamera.usedObj = m.usedObj
+
+            vec3f_set(m.vel, 0.0, 0.0, 0.0)
+
+            m.pos[0] = m.usedObj.rawData[oPosX]
+            m.pos[1] = m.usedObj.rawData[oPosY] + 350.0
+            m.pos[2] = m.usedObj.rawData[oPosZ]
+
+            m.forwardVel = 0.0
+
+            m.actionState = 1
+            break
+
+        case 1:
+            if (m.usedObj.rawData[oAction] == 1) {
+                m.faceAngle[0] = m.usedObj.rawData[oMoveAnglePitch]
+                m.faceAngle[1] = m.usedObj.rawData[oMoveAngleYaw]
+
+                marioObj.rawData[oMarioCannonObjectYaw] = m.usedObj.rawData[oMoveAngleYaw]
+                marioObj.rawData[oMarioCannonInputYaw] = 0
+
+                m.actionState = 2
+            }
+            break
+
+        case 2:
+            m.faceAngle[0] = s16(m.faceAngle[0] - s16(m.controller.stickY * 10.0))
+            marioObj.rawData[oMarioCannonInputYaw] = s16(marioObj.rawData[oMarioCannonInputYaw] - s16(m.controller.stickX * 10.0))
+
+            if (m.faceAngle[0] > 0x38E3) {
+                m.faceAngle[0] = 0x38E3
+            }
+            if (m.faceAngle[0] < 0) {
+                m.faceAngle[0] = 0
+            }
+
+            if (marioObj.rawData[oMarioCannonInputYaw] > 0x4000) {
+                marioObj.rawData[oMarioCannonInputYaw] = 0x4000
+            }
+            if (marioObj.rawData[oMarioCannonInputYaw] < -0x4000) {
+                marioObj.rawData[oMarioCannonInputYaw] = -0x4000
+            }
+
+            m.faceAngle[1] = s16(marioObj.rawData[oMarioCannonObjectYaw] + marioObj.rawData[oMarioCannonInputYaw])
+            if (m.input & Mario.INPUT_A_PRESSED) {
+                m.forwardVel = 100.0 * coss(m.faceAngle[0])
+
+                m.vel[1] = 100.0 * sins(m.faceAngle[0])
+
+                m.pos[0] += 120.0 * coss(m.faceAngle[0]) * sins(m.faceAngle[1])
+                m.pos[1] += 120.0 * sins(m.faceAngle[0])
+                m.pos[2] += 120.0 * coss(m.faceAngle[0]) * coss(m.faceAngle[1])
+
+                play_sound(SOUND_ACTION_FLYING_FAST, m.marioObj.gfx.cameraToObject)
+                play_sound(SOUND_OBJ_POUNDING_CANNON, m.marioObj.gfx.cameraToObject)
+
+                m.marioObj.gfx.flags |= GRAPH_RENDER_ACTIVE
+
+                Mario.set_mario_action(m, Mario.ACT_SHOT_FROM_CANNON, 0)
+                m.usedObj.rawData[oAction] = 2
+                return 0
+            } else {
+                if (m.faceAngle[0] != startFacePitch || m.faceAngle[1] != startFaceYaw) {
+                    play_sound(SOUND_MOVING_AIM_CANNON, m.marioObj.gfx.cameraToObject)
+                }
+            }
+            break
+    }
+
+    vec3f_copy(m.marioObj.gfx.pos, m.pos)
+    vec3s_set(m.marioObj.gfx.angle, 0, m.faceAngle[1], 0)
+    Mario.set_mario_animation(m, Mario.MARIO_ANIM_DIVE)
+
+    return 0
+}
+
 export const mario_execute_automatic_action = (m) => {
 
     switch (m.action) {
-        case Mario.ACT_GRAB_POLE_FAST: return act_grab_pole_fast(m)
-        case Mario.ACT_GRAB_POLE_SLOW: return act_grab_pole_slow(m)
         case Mario.ACT_HOLDING_POLE: return act_holding_pole(m)
+        case Mario.ACT_GRAB_POLE_SLOW: return act_grab_pole_slow(m)
+        case Mario.ACT_GRAB_POLE_FAST: return act_grab_pole_fast(m)
         case Mario.ACT_CLIMBING_POLE: return act_climbing_pole(m)
         case Mario.ACT_TOP_OF_POLE_TRANSITION: return act_top_of_pole_transition(m)
         case Mario.ACT_TOP_OF_POLE: return act_top_of_pole(m)
-        case Mario.ACT_LEDGE_CLIMB_SLOW_1: return act_ledge_climb_slow(m)
-        case Mario.ACT_LEDGE_CLIMB_SLOW_2: return act_ledge_climb_slow(m)
-        case Mario.ACT_LEDGE_GRAB: return act_ledge_grab(m)
-        case Mario.ACT_LEDGE_CLIMB_DOWN: return act_ledge_climb_down(m)
-        case Mario.ACT_LEDGE_CLIMB_FAST: return act_ledge_climb_fast(m)
         case Mario.ACT_START_HANGING: return act_start_hanging(m)
         case Mario.ACT_HANGING: return act_hanging(m)
         case Mario.ACT_HANG_MOVING: return act_hang_moving(m)
+        case Mario.ACT_LEDGE_GRAB: return act_ledge_grab(m)
+        case Mario.ACT_LEDGE_CLIMB_SLOW_1: return act_ledge_climb_slow(m)
+        case Mario.ACT_LEDGE_CLIMB_SLOW_2: return act_ledge_climb_slow(m)
+        case Mario.ACT_LEDGE_CLIMB_DOWN: return act_ledge_climb_down(m)
+        case Mario.ACT_LEDGE_CLIMB_FAST: return act_ledge_climb_fast(m)
+        case Mario.ACT_GRABBED: return act_grabbed(m)
+        case Mario.ACT_IN_CANNON: return act_in_cannon(m)
+        case Mario.ACT_TORNADO_TWIRLING: return act_tornado_twirling(m)
         default: throw "unknown action automatic"
     }
 }
