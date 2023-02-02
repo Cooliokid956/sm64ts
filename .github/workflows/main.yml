@@ -21,7 +21,7 @@
     cache: # optional
     # Used to specify the path to a dependency file: package-lock.json, yarn.lock, etc. Supports wildcards or a list of file names for caching multiple dependencies.
     cache-dependency-path: # optional
-
+---
 on:
   workflow_dispatch:
   push:
